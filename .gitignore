@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# VLCKit-SPM generated files
+staging/
+*.xcframework/
+.swiftpm/
+.DS_Store

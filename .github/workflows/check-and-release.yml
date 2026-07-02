@@ -1,0 +1,162 @@
+name: Check and Release VLCKit
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: prod or unstable
+        required: true
+        default: prod
+      kit:
+        description: VLCKit, MobileVLCKit, or TVVLCKit
+        required: true
+        default: VLCKit
+      version:
+        description: latest or exact upstream version
+        required: true
+        default: latest
+      force:
+        description: Rebuild even when metadata already matches
+        required: true
+        default: "false"
+  schedule:
+    - cron: "30 2 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vlckit-spm-${{ github.event.inputs.channel || 'prod' }}
+  cancel-in-progress: false
+
+jobs:
+  check-and-release:
+    runs-on: macos-latest
+    env:
+      CHANNEL: ${{ github.event.inputs.channel || 'prod' }}
+      KIT: ${{ github.event.inputs.kit || 'VLCKit' }}
+      VERSION: ${{ github.event.inputs.version || 'latest' }}
+      FORCE: ${{ github.event.inputs.force || 'false' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Build SwiftPM package asset
+        id: build
+        run: |
+          args=(
+            build
+            --channel "$CHANNEL"
+            --kit "$KIT"
+            --version "$VERSION"
+            --repo "$GITHUB_REPOSITORY"
+          )
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force)
+          fi
+          python3 scripts/vlckit_spm.py "${args[@]}"
+
+      - name: Stop when no new version exists
+        if: steps.build.outputs.changed != 'true'
+        run: echo "No new VLCKit version found."
+
+      - name: Validate generated package
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          unzip -l "${{ steps.build.outputs.asset_path }}" | head -30
+          swift package dump-package
+
+      - name: Commit generated package files
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          git add Package.swift README.md "metadata/${CHANNEL}.json"
+          if git diff --cached --quiet; then
+            echo "No generated file changes to commit."
+            exit 1
+          fi
+          git commit -m "Release ${KIT} ${{ steps.build.outputs.tag }}"
+
+      - name: Push channel branch
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          git push origin HEAD:${CHANNEL}
+
+      - name: Create and push tag
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          tag="${{ steps.build.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists on origin."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists locally."
+            exit 1
+          fi
+          git tag "$tag"
+          git push origin "$tag"
+
+      - name: Create or update GitHub release
+        if: steps.build.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.build.outputs.tag }}
+          ASSET: ${{ steps.build.outputs.asset_path }}
+          NOTES: ${{ steps.build.outputs.release_notes }}
+          PRERELEASE: ${{ steps.build.outputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" \
+              --title "$TAG" \
+              --notes-file "$NOTES" \
+              --target "$TAG" \
+              "${flags[@]}"
+          fi
+
+      - name: Verify final release URL
+        if: steps.build.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.build.outputs.tag }}
+          ASSET_URL: ${{ steps.build.outputs.asset_url }}
+        run: |
+          tmp="$(mktemp -d)"
+          curl -fL --head "$ASSET_URL"
+          mkdir -p "$tmp/Consumer"
+          cd "$tmp/Consumer"
+          swift package init --type executable
+          cat > Package.swift <<EOF
+          // swift-tools-version: 5.9
+          import PackageDescription
+
+          let package = Package(
+              name: "Consumer",
+              dependencies: [
+                  .package(url: "https://github.com/${GITHUB_REPOSITORY}.git", exact: "${TAG}")
+              ],
+              targets: [
+                  .executableTarget(
+                      name: "Consumer",
+                      dependencies: [
+                          .product(name: "${KIT}", package: "VLCKit-SPM")
+                      ]
+                  )
+              ]
+          )
+          EOF
+          swift package resolve
+          cp "${GITHUB_WORKSPACE}/Package.swift" "$tmp/Package.swift"
+          cd "$tmp"
+          swift package dump-package
