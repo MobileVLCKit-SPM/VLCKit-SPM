@@ -250,12 +250,12 @@ def zip_xcframework(staging_dir: pathlib.Path, xcframework: pathlib.Path, output
     zip_tool = shutil.which("zip")
     if zip_tool:
         subprocess.run(
-            [zip_tool, "-r", "-y", "-q", str(output.resolve()), xcframework.name],
+            [zip_tool, "-r", "-y", "-q", "-9", str(output.resolve()), xcframework.name],
             cwd=staging_dir,
             check=True,
         )
         return output
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for path in sorted(xcframework.rglob("*")):
             arcname = path.relative_to(staging_dir)
             if path.is_dir():
