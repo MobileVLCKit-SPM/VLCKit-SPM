@@ -72,7 +72,7 @@ dist/
 维护两个移动分支和一组不可变 tag：
 
 ```text
-master 或 main
+master
   默认开发分支，保存脚本、workflow 和文档。
 
 prod
@@ -93,6 +93,7 @@ GitHub Release 规则：
 - 每个 Release 上传一个 SwiftPM 可用的 zip asset。
 - `Package.swift` 中的 binary target URL 指向对应 Release asset。
 - tag 一旦创建，不自动移动。
+- 第一版固定使用当前默认分支 `master`。如需迁移到 `main`，后续单独处理。
 
 ## 版本规范
 
@@ -183,6 +184,24 @@ python3 scripts/vlckit_spm.py release \
 16. 写入 `metadata/<channel>.json`。
 17. 输出 GitHub Actions 需要的变量：version、tag、asset path、
     checksum、source URL、是否 prerelease。
+
+SwiftPM zip 的根目录必须直接包含 `.xcframework`，不能多出 `dist/`、
+临时目录或其他外层目录。推荐打包方式：
+
+```bash
+mkdir -p dist staging
+cp -R build/VLCKit.xcframework staging/VLCKit.xcframework
+cd staging
+zip -r ../dist/VLCKit-<version>.zip VLCKit.xcframework
+```
+
+zip 内部结构应为：
+
+```text
+VLCKit.xcframework/
+  Info.plist
+  ...
+```
 
 第一版优先支持：
 
@@ -276,12 +295,18 @@ jobs:
 2. 配置 git author。
 3. 运行 Python 脚本检查并构建。
 4. 如果没有新版本，结束 workflow。
-5. 创建或更新 GitHub Release。
-6. 上传生成的 zip asset。
-7. 提交 `Package.swift`、`README.md`、`metadata/<channel>.json`。
-8. 推送到对应 channel branch。
-9. 创建并推送规范化后的 tag。
-10. 对 stable 版本，可选同步到默认分支。
+5. 生成 `Package.swift`、`README.md`、`metadata/<channel>.json`。
+6. 提交生成文件。
+7. 推送到对应 channel branch。
+8. 创建并推送规范化后的 tag。
+9. 基于已经存在的 tag 创建或更新 GitHub Release。
+10. 上传生成的 zip asset。
+11. 使用最终 Release asset URL 做一次 consumer 解析验证。
+12. 对 stable 版本，可选同步到默认分支。
+
+必须先提交并推送 tag，再创建 GitHub Release。不要让
+`gh release create "$TAG"` 隐式创建 tag，否则 tag 可能指向默认分支旧提交，
+而不是包含当前 `Package.swift` 和 checksum 的提交。
 
 ## GitHub Release 命令
 
@@ -290,7 +315,8 @@ jobs:
 ```bash
 gh release create "$TAG" "$ASSET" \
   --title "$TAG" \
-  --notes-file release-notes.md
+  --notes-file release-notes.md \
+  --target "$TAG"
 ```
 
 unstable prerelease：
@@ -299,7 +325,8 @@ unstable prerelease：
 gh release create "$TAG" "$ASSET" \
   --title "$TAG" \
   --notes-file release-notes.md \
-  --prerelease
+  --prerelease \
+  --target "$TAG"
 ```
 
 如果 Release 已存在，替换 asset：
@@ -341,15 +368,19 @@ git push origin 4.0.0-alpha.18
 ```bash
 swift package compute-checksum dist/VLCKit-<version>.zip
 swift package dump-package
+unzip -l dist/VLCKit-<version>.zip | head
 ```
 
 推荐额外验证：
 
 1. 创建临时 SwiftPM consumer package。
-2. 添加本仓库作为依赖。
-3. 解析依赖。
+2. 使用最终 GitHub Release asset URL 写入本仓库生成的 `Package.swift`。
+3. 添加本仓库对应 tag 或 branch 作为依赖。
 4. 如需要，创建最小 iOS/macOS sample project。
 5. 使用 `xcodebuild -resolvePackageDependencies` 验证 Xcode 可解析。
+
+第一版发布后验证必须覆盖最终远端 URL，而不是只验证本地 zip。否则
+GitHub Release asset URL、权限、重定向或 zip 根目录结构问题可能在发布后才暴露。
 
 ## 第一版交付范围
 
@@ -381,5 +412,5 @@ swift package dump-package
 3. 需要确认 `VLCKit`、`MobileVLCKit`、`TVVLCKit` 的目标命名是否统一。
 4. 需要确认最低平台版本。
 5. 需要确认 GitHub Release asset URL 是否使用公开仓库地址。
-6. 需要确认默认分支是 `master` 还是迁移到 `main`。
+6. 需要决定后续是否将默认分支从 `master` 迁移到 `main`。
 7. 需要决定 stable 是否先发 prerelease 人工验证，再提升为正式 release。
