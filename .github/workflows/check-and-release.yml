@@ -39,9 +39,13 @@ jobs:
       FORCE: ${{ github.event.inputs.force || 'false' }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --force --tags origin "+refs/heads/*:refs/remotes/origin/*"
+          git checkout -B "${GITHUB_REF_NAME}" "origin/${GITHUB_REF_NAME}"
 
       - name: Configure git author
         run: |
