@@ -93,14 +93,14 @@ jobs:
         run: |
           tag="${{ steps.build.outputs.tag }}"
           if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "Tag ${tag} already exists on origin."
-            exit 1
+            echo "Tag ${tag} already exists on origin; reusing it for the release."
+            exit 0
           fi
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists locally."
-            exit 1
+            echo "Tag ${tag} already exists locally; pushing it to origin."
+          else
+            git tag "$tag"
           fi
-          git tag "$tag"
           git push origin "$tag"
 
       - name: Create or update GitHub release
@@ -122,7 +122,6 @@ jobs:
             gh release create "$TAG" "$ASSET" \
               --title "$TAG" \
               --notes-file "$NOTES" \
-              --target "$TAG" \
               "${flags[@]}"
           fi
 
