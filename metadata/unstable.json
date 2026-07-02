@@ -1,1 +1,15 @@
-{}
+{
+  "asset_name": "VLCKit-4.0.0-alpha.19.zip",
+  "asset_path": "dist/VLCKit-4.0.0-alpha.19.zip",
+  "asset_url": "https://github.com/MobileVLCKit-SPM/VLCKit-SPM/releases/download/4.0.0-alpha.19/VLCKit-4.0.0-alpha.19.zip",
+  "channel": "unstable",
+  "checksum": "bba8590a2f98a3c7c180e742d9ef27c660c5055b5de203c755a5d8f27404526a",
+  "kit": "VLCKit",
+  "normalized_version": "4.0.0-alpha.19",
+  "prerelease": true,
+  "source_sha256": "1172078a43150af202c31feb62db3d6687f242d3aa048cce1b899f51c4f14142",
+  "source_url": "https://download.videolan.org/pub/cocoapods/unstable/VLCKit-4.0.0a19-d7597c1706-85a537d69.tar.xz",
+  "tag": "4.0.0-alpha.19",
+  "upstream_filename": "VLCKit-4.0.0a19-d7597c1706-85a537d69.tar.xz",
+  "upstream_version": "4.0.0a19"
+}
