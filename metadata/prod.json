@@ -1,1 +1,15 @@
-{}
+{
+  "asset_name": "VLCKit-3.7.3.zip",
+  "asset_path": "dist/VLCKit-3.7.3.zip",
+  "asset_url": "https://github.com/MobileVLCKit-SPM/VLCKit-SPM/releases/download/3.7.3/VLCKit-3.7.3.zip",
+  "channel": "prod",
+  "checksum": "9f26c3037ce72ab27758ee8e60cb38102197587fd79359a2674b141781cf8b3f",
+  "kit": "VLCKit",
+  "normalized_version": "3.7.3",
+  "prerelease": false,
+  "source_sha256": "019afdae4e2e2d0f3ac325fac8f7ba0af25dca70b9d157df7d60db88e0be8e5d",
+  "source_url": "https://download.videolan.org/pub/cocoapods/prod/VLCKit-3.7.3-319ed2c0-79128878.tar.xz",
+  "tag": "3.7.3",
+  "upstream_filename": "VLCKit-3.7.3-319ed2c0-79128878.tar.xz",
+  "upstream_version": "3.7.3"
+}
