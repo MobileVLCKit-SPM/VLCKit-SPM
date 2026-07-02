@@ -125,14 +125,34 @@ jobs:
               "${flags[@]}"
           fi
 
-      - name: Verify final release URL
+      - name: Verify uploaded release asset
+        if: steps.build.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.build.outputs.tag }}
+          ASSET_NAME: ${{ steps.build.outputs.asset_name }}
+          ASSET_URL: ${{ steps.build.outputs.asset_url }}
+        run: |
+          for attempt in {1..12}; do
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fx "$ASSET_NAME" >/dev/null; then
+              echo "Release asset ${ASSET_NAME} is listed on ${TAG}."
+              break
+            fi
+            if [ "$attempt" = "12" ]; then
+              echo "Release asset ${ASSET_NAME} was not found on ${TAG}."
+              exit 1
+            fi
+            echo "Waiting for release asset ${ASSET_NAME} to appear; attempt ${attempt}/12."
+            sleep 5
+          done
+          curl --fail --location --head --retry 6 --retry-delay 5 "$ASSET_URL"
+
+      - name: Verify final SwiftPM resolution
         if: steps.build.outputs.changed == 'true'
         env:
           TAG: ${{ steps.build.outputs.tag }}
-          ASSET_URL: ${{ steps.build.outputs.asset_url }}
         run: |
           tmp="$(mktemp -d)"
-          curl -fL --head "$ASSET_URL"
           mkdir -p "$tmp/Consumer"
           cd "$tmp/Consumer"
           swift package init --type executable
