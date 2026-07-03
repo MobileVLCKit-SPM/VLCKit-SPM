@@ -63,6 +63,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Check out channel branch
+        if: github.event_name == 'schedule' || matrix.channel == github.event.inputs.channel
+        run: |
+          if git show-ref --verify --quiet "refs/remotes/origin/${CHANNEL}"; then
+            git checkout -B "${CHANNEL}" "origin/${CHANNEL}"
+            git merge --no-edit "$GITHUB_SHA"
+          else
+            git checkout -B "${CHANNEL}"
+          fi
+
       - name: Build SwiftPM package asset
         if: github.event_name == 'schedule' || matrix.channel == github.event.inputs.channel
         id: build
