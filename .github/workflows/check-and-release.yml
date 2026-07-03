@@ -104,6 +104,10 @@ jobs:
         run: |
           git add Package.swift README.md "metadata/${CHANNEL}.json"
           if git diff --cached --quiet; then
+            if [ "${{ steps.build.outputs.release_asset_exists }}" = "false" ]; then
+              echo "No generated file changes; continuing to recreate the missing release asset."
+              exit 0
+            fi
             echo "No generated file changes to commit."
             exit 1
           fi

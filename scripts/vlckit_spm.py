@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -282,6 +283,19 @@ def release_asset_url(repo: str, tag: str, asset_name: str) -> str:
     return f"https://github.com/{repo}/releases/download/{tag}/{asset_name}"
 
 
+def release_asset_exists(url: str) -> bool:
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "VLCKit-SPM/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return 200 <= response.status < 400
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return False
+        fail(f"could not verify release asset {url}: HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        fail(f"could not verify release asset {url}: {exc.reason}")
+
+
 def write_package(path: pathlib.Path, package_name: str, kit: str, url: str, checksum: str) -> None:
     path.write_text(
         f"""// swift-tools-version: 5.9
@@ -351,19 +365,28 @@ def build(args: argparse.Namespace) -> dict[str, object]:
     metadata_path = pathlib.Path(args.metadata_dir) / f"{args.channel}.json"
     metadata = load_metadata(metadata_path)
     changed = metadata.get("normalized_version") != archive.normalized_version
+    url = release_asset_url(repo, archive.tag, archive.asset_name)
+    release_asset_present: bool | None = None
     if not changed and not args.force:
-        payload = {
-            "changed": False,
-            "kit": archive.kit,
-            "channel": archive.channel,
-            "normalized_version": archive.normalized_version,
-            "tag": archive.tag,
-            "asset_name": archive.asset_name,
-            "prerelease": archive.prerelease,
-        }
-        write_github_output(payload)
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return payload
+        release_asset_present = release_asset_exists(url)
+        if not release_asset_present:
+            print(f"Release asset {url} is missing; rebuilding {archive.kit} {archive.normalized_version}.")
+            changed = True
+        else:
+            payload = {
+                "changed": False,
+                "kit": archive.kit,
+                "channel": archive.channel,
+                "normalized_version": archive.normalized_version,
+                "tag": archive.tag,
+                "asset_name": archive.asset_name,
+                "asset_url": url,
+                "release_asset_exists": True,
+                "prerelease": archive.prerelease,
+            }
+            write_github_output(payload)
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return payload
 
     root = pathlib.Path.cwd()
     cache_dir = pathlib.Path(args.cache_dir)
@@ -386,7 +409,6 @@ def build(args: argparse.Namespace) -> dict[str, object]:
     staged_xcframework = copy_xcframework(xcframework, staging_dir, args.kit)
     asset_path = zip_xcframework(staging_dir, staged_xcframework, output_dir / archive.asset_name)
     checksum = compute_swiftpm_checksum(asset_path)
-    url = release_asset_url(repo, archive.tag, archive.asset_name)
 
     write_package(root / "Package.swift", args.package_name, args.kit, url, checksum)
     metadata_payload = {
@@ -437,6 +459,7 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         "source_url": archive.url,
         "source_sha256": source_sha256,
         "release_notes": str(release_notes),
+        "release_asset_exists": release_asset_present if release_asset_present is not None else "unknown",
         "prerelease": archive.prerelease,
     }
     write_github_output(payload)
