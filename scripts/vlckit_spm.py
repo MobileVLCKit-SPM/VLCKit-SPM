@@ -78,6 +78,11 @@ def sha256_file(path: pathlib.Path) -> str:
 
 
 def normalize_version(version: str) -> str:
+    dated_build = re.fullmatch(r"(\d+)\.(\d+)-(\d{8})-(\d{4})", version)
+    if dated_build:
+        major, minor, date, time = dated_build.groups()
+        return f"{major}.{minor}.0-alpha.{date}.{time}"
+
     match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:([ab]|rc)(\d+))?", version)
     if not match:
         fail(f"unsupported upstream version: {version}")
@@ -88,23 +93,34 @@ def normalize_version(version: str) -> str:
     return f"{base}-{label}.{number}"
 
 
-def version_key(version: str) -> tuple[int, int, int, int, int]:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+))?", version)
+def version_key(version: str) -> tuple[int, ...]:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+(?:\.\d+)*))?", version)
     if not match:
         fail(f"unsupported normalized version: {version}")
     major, minor, patch, label, number = match.groups()
     label_rank = {"alpha": 0, "beta": 1, "rc": 2, None: 3}.get(label)
     if label_rank is None:
         fail(f"unsupported prerelease label: {label}")
-    return (int(major), int(minor), int(patch), label_rank, int(number or 0))
+    identifiers = tuple(int(item) for item in number.split(".")) if number else (0,)
+    return (int(major), int(minor), int(patch), label_rank, *identifiers)
 
 
 def parse_archive_filename(channel: str, kit: str, filename: str) -> Archive | None:
-    pattern = rf"^({re.escape(kit)})-(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)-.+\.(tar\.xz|zip)$"
+    traditional_version = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?"
+    dated_alpha_version = r"\d+\.\d+-\d{8}-\d{4}"
+    pattern = (
+        rf"^({re.escape(kit)})-"
+        rf"({traditional_version}-.+|{dated_alpha_version})"
+        rf"\.(tar\.xz|zip)$"
+    )
     match = re.fullmatch(pattern, filename)
     if not match:
         return None
-    upstream_version = match.group(2)
+    matched_name = match.group(2)
+    if re.fullmatch(dated_alpha_version, matched_name):
+        upstream_version = matched_name
+    else:
+        upstream_version = matched_name.split("-", 1)[0]
     normalized = normalize_version(upstream_version)
     url = f"{BASE_URL}/{channel}/{urllib.parse.quote(filename)}"
     return Archive(
