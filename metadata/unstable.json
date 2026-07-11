@@ -1,15 +1,15 @@
 {
-  "asset_name": "VLCKit-4.0.0-alpha.19.zip",
-  "asset_path": "dist/VLCKit-4.0.0-alpha.19.zip",
-  "asset_url": "https://github.com/MobileVLCKit-SPM/VLCKit-SPM/releases/download/4.0.0-alpha.19/VLCKit-4.0.0-alpha.19.zip",
+  "asset_name": "VLCKit-4.0.0-alpha.20260706.1303.zip",
+  "asset_path": "dist/VLCKit-4.0.0-alpha.20260706.1303.zip",
+  "asset_url": "https://github.com/MobileVLCKit-SPM/VLCKit-SPM/releases/download/4.0.0-alpha.20260706.1303/VLCKit-4.0.0-alpha.20260706.1303.zip",
   "channel": "unstable",
-  "checksum": "bba8590a2f98a3c7c180e742d9ef27c660c5055b5de203c755a5d8f27404526a",
+  "checksum": "76d1ba4216dda2290d49550d730eeb6c8d5123385feaa0771d2744ba1d5188ca",
   "kit": "VLCKit",
-  "normalized_version": "4.0.0-alpha.19",
+  "normalized_version": "4.0.0-alpha.20260706.1303",
   "prerelease": true,
-  "source_sha256": "1172078a43150af202c31feb62db3d6687f242d3aa048cce1b899f51c4f14142",
-  "source_url": "https://download.videolan.org/pub/cocoapods/unstable/VLCKit-4.0.0a19-d7597c1706-85a537d69.tar.xz",
-  "tag": "4.0.0-alpha.19",
-  "upstream_filename": "VLCKit-4.0.0a19-d7597c1706-85a537d69.tar.xz",
-  "upstream_version": "4.0.0a19"
+  "source_sha256": "8f07fae807fdb456b073446be237676401e9b6ac2c1546fe858cfb06249d2753",
+  "source_url": "https://download.videolan.org/pub/cocoapods/unstable/VLCKit-4.0-20260706-1303.tar.xz",
+  "tag": "4.0.0-alpha.20260706.1303",
+  "upstream_filename": "VLCKit-4.0-20260706-1303.tar.xz",
+  "upstream_version": "4.0-20260706-1303"
 }

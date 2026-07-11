@@ -14,8 +14,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "VLCKit",
-            url: "https://github.com/MobileVLCKit-SPM/VLCKit-SPM/releases/download/4.0.0-alpha.19/VLCKit-4.0.0-alpha.19.zip",
-            checksum: "bba8590a2f98a3c7c180e742d9ef27c660c5055b5de203c755a5d8f27404526a"
+            url: "https://github.com/MobileVLCKit-SPM/VLCKit-SPM/releases/download/4.0.0-alpha.20260706.1303/VLCKit-4.0.0-alpha.20260706.1303.zip",
+            checksum: "76d1ba4216dda2290d49550d730eeb6c8d5123385feaa0771d2744ba1d5188ca"
         )
     ]
 )
