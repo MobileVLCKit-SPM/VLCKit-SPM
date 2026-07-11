@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -77,6 +78,11 @@ def sha256_file(path: pathlib.Path) -> str:
 
 
 def normalize_version(version: str) -> str:
+    dated_build = re.fullmatch(r"(\d+)\.(\d+)-(\d{8})-(\d{4})", version)
+    if dated_build:
+        major, minor, date, time = dated_build.groups()
+        return f"{major}.{minor}.0-alpha.{date}.{time}"
+
     match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:([ab]|rc)(\d+))?", version)
     if not match:
         fail(f"unsupported upstream version: {version}")
@@ -87,23 +93,34 @@ def normalize_version(version: str) -> str:
     return f"{base}-{label}.{number}"
 
 
-def version_key(version: str) -> tuple[int, int, int, int, int]:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+))?", version)
+def version_key(version: str) -> tuple[int, ...]:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+(?:\.\d+)*))?", version)
     if not match:
         fail(f"unsupported normalized version: {version}")
     major, minor, patch, label, number = match.groups()
     label_rank = {"alpha": 0, "beta": 1, "rc": 2, None: 3}.get(label)
     if label_rank is None:
         fail(f"unsupported prerelease label: {label}")
-    return (int(major), int(minor), int(patch), label_rank, int(number or 0))
+    identifiers = tuple(int(item) for item in number.split(".")) if number else (0,)
+    return (int(major), int(minor), int(patch), label_rank, *identifiers)
 
 
 def parse_archive_filename(channel: str, kit: str, filename: str) -> Archive | None:
-    pattern = rf"^({re.escape(kit)})-(\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)-.+\.(tar\.xz|zip)$"
+    traditional_version = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?"
+    dated_alpha_version = r"\d+\.\d+-\d{8}-\d{4}"
+    pattern = (
+        rf"^({re.escape(kit)})-"
+        rf"({traditional_version}-.+|{dated_alpha_version})"
+        rf"\.(tar\.xz|zip)$"
+    )
     match = re.fullmatch(pattern, filename)
     if not match:
         return None
-    upstream_version = match.group(2)
+    matched_name = match.group(2)
+    if re.fullmatch(dated_alpha_version, matched_name):
+        upstream_version = matched_name
+    else:
+        upstream_version = matched_name.split("-", 1)[0]
     normalized = normalize_version(upstream_version)
     url = f"{BASE_URL}/{channel}/{urllib.parse.quote(filename)}"
     return Archive(
@@ -250,12 +267,12 @@ def zip_xcframework(staging_dir: pathlib.Path, xcframework: pathlib.Path, output
     zip_tool = shutil.which("zip")
     if zip_tool:
         subprocess.run(
-            [zip_tool, "-r", "-y", "-q", str(output.resolve()), xcframework.name],
+            [zip_tool, "-r", "-y", "-q", "-9", str(output.resolve()), xcframework.name],
             cwd=staging_dir,
             check=True,
         )
         return output
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for path in sorted(xcframework.rglob("*")):
             arcname = path.relative_to(staging_dir)
             if path.is_dir():
@@ -280,6 +297,19 @@ def compute_swiftpm_checksum(zip_path: pathlib.Path) -> str:
 
 def release_asset_url(repo: str, tag: str, asset_name: str) -> str:
     return f"https://github.com/{repo}/releases/download/{tag}/{asset_name}"
+
+
+def release_asset_exists(url: str) -> bool:
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "VLCKit-SPM/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return 200 <= response.status < 400
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return False
+        fail(f"could not verify release asset {url}: HTTP {exc.code}")
+    except urllib.error.URLError as exc:
+        fail(f"could not verify release asset {url}: {exc.reason}")
 
 
 def write_package(path: pathlib.Path, package_name: str, kit: str, url: str, checksum: str) -> None:
@@ -351,19 +381,28 @@ def build(args: argparse.Namespace) -> dict[str, object]:
     metadata_path = pathlib.Path(args.metadata_dir) / f"{args.channel}.json"
     metadata = load_metadata(metadata_path)
     changed = metadata.get("normalized_version") != archive.normalized_version
+    url = release_asset_url(repo, archive.tag, archive.asset_name)
+    release_asset_present: bool | None = None
     if not changed and not args.force:
-        payload = {
-            "changed": False,
-            "kit": archive.kit,
-            "channel": archive.channel,
-            "normalized_version": archive.normalized_version,
-            "tag": archive.tag,
-            "asset_name": archive.asset_name,
-            "prerelease": archive.prerelease,
-        }
-        write_github_output(payload)
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return payload
+        release_asset_present = release_asset_exists(url)
+        if not release_asset_present:
+            print(f"Release asset {url} is missing; rebuilding {archive.kit} {archive.normalized_version}.")
+            changed = True
+        else:
+            payload = {
+                "changed": False,
+                "kit": archive.kit,
+                "channel": archive.channel,
+                "normalized_version": archive.normalized_version,
+                "tag": archive.tag,
+                "asset_name": archive.asset_name,
+                "asset_url": url,
+                "release_asset_exists": True,
+                "prerelease": archive.prerelease,
+            }
+            write_github_output(payload)
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return payload
 
     root = pathlib.Path.cwd()
     cache_dir = pathlib.Path(args.cache_dir)
@@ -386,7 +425,6 @@ def build(args: argparse.Namespace) -> dict[str, object]:
     staged_xcframework = copy_xcframework(xcframework, staging_dir, args.kit)
     asset_path = zip_xcframework(staging_dir, staged_xcframework, output_dir / archive.asset_name)
     checksum = compute_swiftpm_checksum(asset_path)
-    url = release_asset_url(repo, archive.tag, archive.asset_name)
 
     write_package(root / "Package.swift", args.package_name, args.kit, url, checksum)
     metadata_payload = {
@@ -437,6 +475,7 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         "source_url": archive.url,
         "source_sha256": source_sha256,
         "release_notes": str(release_notes),
+        "release_asset_exists": release_asset_present if release_asset_present is not None else "unknown",
         "prerelease": archive.prerelease,
     }
     write_github_output(payload)
